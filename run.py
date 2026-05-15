@@ -143,6 +143,9 @@ def build_bench_cmd(cfg: dict[str, str]) -> list[str]:
         cmd.extend(["--seed", seed])
     if bool_val(cfg.get("ENABLE_NEGATIVE_PROMPT", "false")):
         cmd.append("--enable-negative-prompt")
+    save_dir = cfg.get("SAVE_VIDEOS", "")
+    if save_dir:
+        cmd.extend(["--save-videos", save_dir])
 
     return cmd
 
