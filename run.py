@@ -27,19 +27,31 @@ from pathlib import Path
 # Env file loader
 # ---------------------------------------------------------------------------
 
-def load_env(path: str) -> dict[str, str]:
-    """Parse a KEY=VALUE env file. Skips comments and blank lines."""
+def load_env(path: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Parse env file. Returns (cfg, export_env).
+
+    Lines under an [env] section are environment variables to export
+    to the server subprocess. All other lines are config values.
+    """
     cfg = {}
+    export_env = {}
+    in_env_section = False
     with open(path) as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
+            if line.startswith("[") and line.endswith("]"):
+                in_env_section = line.lower() == "[env]"
+                continue
             if "=" not in line:
                 continue
             key, _, value = line.partition("=")
-            cfg[key.strip()] = value.strip()
-    return cfg
+            if in_env_section:
+                export_env[key.strip()] = value.strip()
+            else:
+                cfg[key.strip()] = value.strip()
+    return cfg, export_env
 
 
 def bool_val(s: str) -> bool:
@@ -184,7 +196,7 @@ def main():
         print(f"ERROR: Config file not found: {env_path}")
         sys.exit(1)
 
-    cfg = load_env(str(env_path))
+    cfg, export_env = load_env(str(env_path))
     omni_root = Path(cfg.get("VLLM_OMNI_ROOT", ".")).resolve()
 
     # --- Print config summary ---
@@ -232,6 +244,7 @@ def main():
     if not args.no_server:
         env = os.environ.copy()
         env["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
+        env.update(export_env)
         cuda_devices = cfg.get("CUDA_DEVICES", "")
         if cuda_devices:
             env["CUDA_VISIBLE_DEVICES"] = cuda_devices
