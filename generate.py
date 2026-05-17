@@ -114,11 +114,11 @@ def download_prompts(prompt_set: str, cache_dir: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Video generation (sync endpoint)
+# Video generation (async poll API: POST → poll → GET content)
 # ---------------------------------------------------------------------------
 
 
-def generate_video_sync(
+def generate_video(
     base_url: str,
     prompt: str,
     output_path: str,
@@ -129,11 +129,16 @@ def generate_video_sync(
     fps: int,
     seed: int | None = None,
     extra_fields: dict | None = None,
+    poll_interval: float = 5.0,
+    timeout: float = 3600.0,
 ) -> str:
-    """POST to /v1/videos/sync, stream response bytes to output_path.
+    """Submit video job, poll until done, download content to output_path.
 
-    Returns the inference time from the X-Inference-Time-S header (or "?").
+    Uses the async /v1/videos API (no server-side timeout issues).
+    Returns inference time string or "?".
     """
+    import json as _json
+
     boundary = "----BenchWanBoundary"
     fields = {
         "prompt": prompt,
@@ -148,6 +153,7 @@ def generate_video_sync(
     if extra_fields:
         fields.update(extra_fields)
 
+    # Build multipart form
     body_parts = []
     for key, value in fields.items():
         body_parts.append(f"--{boundary}".encode())
@@ -158,21 +164,66 @@ def generate_video_sync(
     body_parts.append(f"--{boundary}--".encode())
     body = b"\r\n".join(body_parts)
 
+    api_url = f"{base_url}/v1/videos"
+
+    # Step 1: Submit job
     req = urllib.request.Request(
-        f"{base_url}/v1/videos/sync",
+        api_url,
         data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
         method="POST",
     )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        resp_json = _json.loads(resp.read())
 
-    with urllib.request.urlopen(req, timeout=3600) as resp:
+    job_id = resp_json.get("id")
+    job_status = resp_json.get("status")
+    if not job_id:
+        raise RuntimeError(f"No job id in response: {resp_json}")
+
+    # Step 2: Poll until completed/failed
+    job_url = f"{api_url}/{job_id}"
+    deadline = time.time() + timeout
+    poll_json = resp_json
+
+    while job_status not in ("completed", "failed"):
+        if time.time() > deadline:
+            raise TimeoutError(
+                f"Video job {job_id} not done after {timeout}s"
+            )
+        time.sleep(poll_interval)
+        poll_req = urllib.request.Request(job_url, method="GET")
+        with urllib.request.urlopen(poll_req, timeout=30) as poll_resp:
+            poll_json = _json.loads(poll_resp.read())
+            job_status = poll_json.get("status")
+
+    if job_status == "failed":
+        raise RuntimeError(f"Video job failed: {poll_json}")
+
+    # Step 3: Download content
+    content_url = f"{job_url}/content"
+    content_req = urllib.request.Request(content_url, method="GET")
+    with urllib.request.urlopen(content_req, timeout=120) as content_resp:
         with open(output_path, "wb") as f:
             while True:
-                chunk = resp.read(65536)
+                chunk = content_resp.read(65536)
                 if not chunk:
                     break
                 f.write(chunk)
-        return resp.headers.get("X-Inference-Time-S", "?")
+
+    # Clean up job on server
+    try:
+        del_req = urllib.request.Request(f"{api_url}/{job_id}", method="DELETE")
+        urllib.request.urlopen(del_req, timeout=5)
+    except Exception:
+        pass
+
+    # Extract timing info
+    stage_durations = poll_json.get("stage_durations", {})
+    if stage_durations:
+        total = sum(stage_durations.values())
+        return f"{total:.1f}"
+    return "?"
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +415,7 @@ def main():
             print(f"[{i+1}/{len(prompts)}] Generating: {prompt[:60]}...")
             t0 = time.time()
             try:
-                inf_time = generate_video_sync(
+                inf_time = generate_video(
                     base_url=base_url,
                     prompt=prompt,
                     output_path=output_path,
