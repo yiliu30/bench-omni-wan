@@ -65,6 +65,23 @@ python run.py [env_file] [--no-server] [--server-only] [--dry-run] [--timeout N]
 | `--dry-run` | Print commands without executing |
 | `--timeout` | Server startup timeout in seconds |
 
+## Comparing Eval Results
+
+```bash
+# Compare all sibling results under final-score/ against the baseline directory
+python compare_benchmarks.py final-score/default_bf16_subject_consistency.json
+
+# Compare specific results
+python compare_benchmarks.py \
+  final-score/default_bf16_subject_consistency.json \
+  final-score/default_fp8_linear_subject_consistency.json \
+  final-score/default_mxfp4_linear_only_subject_consistency.json
+```
+
+The script resolves directories to the latest `*_eval_results.json`, prints the
+overall score delta versus the baseline, and shows the largest per-prompt
+regressions and improvements.
+
 ## Files
 
 ```
