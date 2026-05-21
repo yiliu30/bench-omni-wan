@@ -8,22 +8,51 @@
 | `background_consistency` | Quality | No | CLIP ViT-B/32 | ✅ | Background doesn't change unexpectedly |
 | `temporal_flickering` | Quality | No | **None** (pixel MAE) | ✅ | Frame-to-frame pixel-level stability |
 | `motion_smoothness` | Quality | No | AMT-S (frame interpolation) | ✅ | Motion looks natural, no jerky transitions |
-| `dynamic_degree` | Quality | No | RAFT (optical flow) | ✅ | How much motion exists (penalizes static videos) |
+| `dynamic_degree` | Quality | No | RAFT (optical flow) | ✅ | Whether the video contains enough motion (penalizes static videos) |
 | `aesthetic_quality` | Quality | No | CLIP ViT-L/14 + LAION aesthetic head | ✅ | Visual beauty/appeal per frame |
 | `imaging_quality` | Quality | No | MUSIQ-SPAQ (IQA model) | ✅ | Technical image quality (sharpness, noise, etc.) |
-| `overall_consistency` | Semantic | **Yes** | ViCLIP | ❌ | Text-video alignment via video-text similarity |
-| `temporal_style` | Semantic | **Yes** | ViCLIP | ❌ | Temporal style matches the prompt |
+| `overall_consistency` | Semantic | **Yes** | ViCLIP | ✅* | Text-video alignment via video-text similarity |
+| `temporal_style` | Semantic | **Yes** | ViCLIP | ✅* | Temporal style matches the prompt |
 | `appearance_style` | Semantic | **Yes** | CLIP ViT-B/32 | ❌ | Visual style matches the prompt |
 | `object_class` | Semantic | **Yes** | GRiT (dense captioning) + detectron2 | ❌ | Correct objects appear in the video |
-| `multiple_objects` | Semantic | **Yes** | GRiT + detectron2 | ❌ | Correct count of objects |
+| `multiple_objects` | Semantic | **Yes** | GRiT + detectron2 | ❌ | Whether both requested objects appear |
 | `color` | Semantic | **Yes** | GRiT + detectron2 | ❌ | Object colors match the prompt |
 | `spatial_relationship` | Semantic | **Yes** | GRiT + detectron2 | ❌ | Object spatial layout matches prompt |
 | `scene` | Semantic | **Yes** | Tag2Text (Swin-B) | ❌ | Scene type matches the prompt |
-| `human_action` | Semantic | **Yes** | UMT (ViT-L, action recognition) | ✅* | Action in video matches the prompt |
+| `human_action` | Semantic | No* | UMT (ViT-L, action recognition) | ✅** | Action label inferred from filename matches the video |
 
 - **Custom Input = ✅**: can use `--mode=custom_input` with your own videos.
 - **Custom Input = ❌**: requires VBench's `VBench_full_info.json` metadata (structured prompts with auxiliary info).
-- `human_action` (✅*): supports custom input but still needs a prompt to compare against.
+- **Needs Prompt = No\***: the metric itself does not read prompt text; `human_action` uses the filename as the label source.
+- `overall_consistency` and `temporal_style` (✅*): support `--mode=custom_input`, but they still need prompt text from the filename, `--prompt`, or `--prompt_file`.
+- `human_action` (✅**): supports custom input, but it does **not** read `--prompt`; it infers the expected action label from the video filename (for example, `A person is riding a bike-0.mp4`).
+
+## Prompt Counts by Subset
+
+Source: `VBench/vbench/VBench_full_info.json`
+
+| Subset | Category | Prompt Count |
+|---|---|---:|
+| `subject_consistency` | Quality | 72 |
+| `background_consistency` | Quality | 86 |
+| `temporal_flickering` | Quality | 75 |
+| `motion_smoothness` | Quality | 72 |
+| `dynamic_degree` | Quality | 72 |
+| `aesthetic_quality` | Quality | 93 |
+| `imaging_quality` | Quality | 93 |
+| `overall_consistency` | Semantic | 93 |
+| `temporal_style` | Semantic | 100 |
+| `appearance_style` | Semantic | 90 |
+| `object_class` | Semantic | 79 |
+| `multiple_objects` | Semantic | 82 |
+| `color` | Semantic | 85 |
+| `spatial_relationship` | Semantic | 84 |
+| `scene` | Semantic | 86 |
+| `human_action` | Semantic | 100 |
+
+Notes:
+- `VBench_full_info.json` has 946 metadata rows total.
+- 251 rows belong to more than one subset, so subset counts are not expected to sum to 946.
 
 ## How Each Dimension Works
 
@@ -50,7 +79,7 @@ Computes mean absolute error (MAE) between consecutive frames in pixel space.
 Uses AMT-S (Adaptive Multi-scale Temporal model) to interpolate between frames, then measures how well the interpolated frame matches the actual frame. Smooth motion = easy to interpolate = high score.
 
 #### `dynamic_degree` — RAFT (optical flow)
-Uses RAFT optical flow to measure the magnitude of motion in the video. This penalizes completely static videos — a video generation model should produce videos with actual movement.
+Uses RAFT optical flow to decide whether a video has enough motion. It samples frames, computes flow between consecutive frames, and marks the video as moving only if enough frame pairs exceed a motion threshold. This mainly penalizes static videos.
 
 #### `aesthetic_quality` — CLIP ViT-L/14 + LAION aesthetic linear head
 Extracts CLIP ViT-L/14 features per frame, passes them through a linear aesthetic predictor trained by LAION. Scores each frame for visual appeal/beauty, then averages.
@@ -58,7 +87,7 @@ Extracts CLIP ViT-L/14 features per frame, passes them through a linear aestheti
 #### `imaging_quality` — MUSIQ-SPAQ
 Uses MUSIQ (Multi-Scale Image Quality Transformer) trained on SPAQ dataset. Evaluates technical quality: sharpness, noise, compression artifacts, etc. per frame.
 
-### Semantic Dimensions (prompt required)
+### Semantic Dimensions
 
 #### `overall_consistency` — ViCLIP
 Uses ViCLIP (Video-CLIP) to compute video-level embeddings and text embeddings, then measures cosine similarity. Checks if the generated video matches the text prompt semantically.
@@ -73,7 +102,7 @@ Uses CLIP to check if visual appearance style matches the prompt (e.g., "waterco
 Uses GRiT (dense captioning model) to detect objects in video frames, then checks if the prompted object class actually appears.
 
 #### `multiple_objects` — GRiT + detectron2
-Same detection pipeline as object_class, but checks if the correct number of objects are present.
+Same detection pipeline as object_class, but checks whether both requested object categories are detected in the sampled frames.
 
 #### `color` — GRiT + detectron2
 Detects objects and their colors, checks against the prompted color.
@@ -85,7 +114,7 @@ Detects objects and their spatial positions, checks if the spatial layout matche
 Uses Tag2Text model to recognize the scene type in video frames, then matches against the prompted scene.
 
 #### `human_action` — UMT (ViT-L)
-Uses UMT (Unified Multimodal Transformer) for action recognition. Classifies the action in the video and checks if it matches the prompted action.
+Uses UMT (Unified Multimodal Transformer) for action recognition. Classifies the action in the video and checks whether it matches the action label parsed from the filename, not `--prompt`.
 
 ## Scoring
 
@@ -95,7 +124,7 @@ Each dimension score is normalized: `(score - min) / (max - min)` using constant
 ### Final Score Composition
 - **Quality Score** = weighted average of 7 quality dimensions (dynamic_degree has weight 0.5, others 1.0)
 - **Semantic Score** = weighted average of 9 semantic dimensions (all weight 1.0)
-- **Total Score** = `4 × Quality Score + 1 × Semantic Score` (quality-weighted 4:1)
+- **Total Score** = `(4 × Quality Score + 1 × Semantic Score) / 5` (quality-weighted 4:1 average)
 
 ## Running Evaluation
 
@@ -142,6 +171,8 @@ cd /home/yiliu7/workspace/VBench
     --mode=custom_input
 ```
 
+Custom input is supported for: `subject_consistency`, `background_consistency`, `temporal_flickering`, `motion_smoothness`, `dynamic_degree`, `aesthetic_quality`, `imaging_quality`, `overall_consistency`, `temporal_style`, and `human_action`.
+
 ### Multi-GPU
 ```bash
 cd /home/yiliu7/workspace/VBench
@@ -153,7 +184,7 @@ torchrun --nproc_per_node=4 --standalone evaluate.py \
 ```
 
 ### Results
-Saved to `./evaluation_results/` as JSON. Format:
+By default, results are saved to `./evaluation_results/` (or your `--output_path`) as JSON. Format:
 ```json
 {
     "dimension_name": [
