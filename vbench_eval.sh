@@ -4,11 +4,13 @@ set -euo pipefail
 
 vbench_dir=/home/yiliu7/workspace/VBench
 python_bin=/home/yiliu7/workspace/venvs/vbench/bin/python
-seeded_eval_py=/home/yiliu7/workspace/vllm-omni/bench-wan/vbench_eval.py
+python_bin=/home/yiliu7/workspace/venvs/omni/bin/python
+seeded_eval_py=/home/yiliu7/workspace/bench-omni-wan/vbench_eval.py
 video_dir=/home/yiliu7/workspace/vllm-omni/bench-wan/output/default_fp8_linear
 video_dir=/home/yiliu7/workspace/vllm-omni/bench-wan/output/default_bf16
+video_dir=/home/yiliu7/workspace/wan-res/default_bf16_baseline_b200
 eval_seed=${EVAL_SEED:-42}
-cuda_devices=${CUDA_VISIBLE_DEVICES:-5,6}
+cuda_devices=${CUDA_VISIBLE_DEVICES:-2,3}
 
 # video_dir=/mnt/ctrl/disk2/yiliu7/wan-res/default_real_sage3_attn_only
 # video_dir=/home/yiliu7/workspace/vllm-omni/bench-wan/output/default_mxfp4_linear_only
