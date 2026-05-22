@@ -51,6 +51,7 @@ COMMON_VIDEOS = [
 CONFIGS = [
     "default_bf16_baseline_b200",
     "default_mxfp4_hw_attn_only",
+    "default_mxfp4_hw_rotation_attn_only",
     "default_mxfp8_hw_attn_only",
     "default_mxfp8_linear_only",
 ]
