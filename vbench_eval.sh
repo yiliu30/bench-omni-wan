@@ -16,13 +16,13 @@ cuda_devices=${CUDA_VISIBLE_DEVICES:-2,3}
 # video_dir=/home/yiliu7/workspace/vllm-omni/bench-wan/output/default_mxfp4_linear_only
 
 # Custom-input dimensions supported by VBench for this filename-based prompt set.
-# Exclude human_action here: it expects filenames that map cleanly to human action
 # labels, which these mixed subject/vehicle/animal prompts do not provide.
 dims=(
   subject_consistency
   background_consistency
   temporal_flickering
   motion_smoothness
+  dynamic_degree
   aesthetic_quality
   imaging_quality
   overall_consistency

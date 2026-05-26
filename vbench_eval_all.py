@@ -17,6 +17,7 @@ DIMS = [
     "background_consistency",
     "temporal_flickering",
     "motion_smoothness",
+    "dynamic_degree",
     "aesthetic_quality",
     "imaging_quality",
     "overall_consistency",

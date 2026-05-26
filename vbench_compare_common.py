@@ -28,6 +28,7 @@ DIMS = [
     "background_consistency",
     "temporal_flickering",
     "motion_smoothness",
+    "dynamic_degree",
     "aesthetic_quality",
     "imaging_quality",
     "overall_consistency",
@@ -51,9 +52,14 @@ COMMON_VIDEOS = [
 CONFIGS = [
     "default_bf16_baseline_b200",
     "default_mxfp4_hw_attn_only",
+    "default_mxfp4_linear_only_b200",
+    "default_mxfp4_hw_attn_mxfp4_linear",
     "default_mxfp4_hw_rotation_attn_only",
     "default_mxfp8_hw_attn_only",
     "default_mxfp8_linear_only",
+    "default_mxfp8_hw_attn_mxfp8_linear",
+    "default_mxfp8_hw_attn_only_p_max_issue",
+
 ]
 
 
@@ -115,8 +121,7 @@ def compute_vbench_scores(raw_scores: dict[str, float]) -> dict[str, float]:
     semantic = get_semantic_score(normalized)
     total = get_final_score(quality, semantic)
 
-    # Also compute quality-only score from dims we actually evaluated
-    # (excluding dynamic_degree which we didn't evaluate)
+    # Compute quality score from dims we actually evaluated
     evaluated_quality_dims = [
         "subject consistency",
         "background consistency",
@@ -124,6 +129,7 @@ def compute_vbench_scores(raw_scores: dict[str, float]) -> dict[str, float]:
         "motion smoothness",
         "aesthetic quality",
         "imaging quality",
+        "dynamic degree",
     ]
     eval_quality_scores = [normalized[d] for d in evaluated_quality_dims]
     eval_quality_weights = [DIM_WEIGHT[d] for d in evaluated_quality_dims]
@@ -171,10 +177,12 @@ def main():
         "background_consistency": "bg_con",
         "temporal_flickering": "temp_flk",
         "motion_smoothness": "mot_smo",
+        "dynamic_degree": "dyn_deg",
         "aesthetic_quality": "aesth_q",
         "imaging_quality": "img_q",
         "overall_consistency": "overall_con",
         "temporal_style": "temp_style",
+        "human_action": "human_act",
     }
 
     # Print markdown table

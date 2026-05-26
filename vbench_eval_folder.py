@@ -25,10 +25,12 @@ DIMS = [
     "background_consistency",
     "temporal_flickering",
     "motion_smoothness",
+    "dynamic_degree",
     "aesthetic_quality",
     "imaging_quality",
     "overall_consistency",
     "temporal_style",
+    # "human_action",  # disabled: timm VisionTransformer incompatibility (cache_dir kwarg)
 ]
 
 SHORT_NAMES = {
@@ -36,10 +38,12 @@ SHORT_NAMES = {
     "background_consistency": "bg_con",
     "temporal_flickering": "temp_flk",
     "motion_smoothness": "mot_smo",
+    "dynamic_degree": "dyn_deg",
     "aesthetic_quality": "aesth_q",
     "imaging_quality": "img_q",
     "overall_consistency": "overall_con",
     "temporal_style": "temp_style",
+    "human_action": "human_act",
 }
 
 PYTHON_BIN = "/home/yiliu7/workspace/venvs/omni/bin/python"

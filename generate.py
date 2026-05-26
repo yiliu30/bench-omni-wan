@@ -298,10 +298,15 @@ def main():
         help="Single prompt (overrides --prompt-set)",
     )
     parser.add_argument(
+        "--prompt-file", default=None,
+        help="File with one prompt per line (overrides --prompt-set)",
+    )
+    parser.add_argument(
         "--num-prompts", type=int, default=None,
         help="Limit number of prompts (default: all)",
     )
     parser.add_argument("--no-server", action="store_true")
+    parser.add_argument("--server-log", default=None, help="Server log path (default: <output_dir>/server.log)")
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -329,6 +334,9 @@ def main():
     # Prompts
     if args.prompt:
         prompts = [args.prompt]
+    elif args.prompt_file:
+        with open(args.prompt_file) as f:
+            prompts = [line.strip() for line in f if line.strip()]
     else:
         prompts = download_prompts(args.prompt_set, str(Path(__file__).parent))
     if args.num_prompts:
@@ -369,7 +377,7 @@ def main():
     # Start server if needed
     server_proc = None
     server_log_fh = None
-    server_log_path = os.path.join(output_dir, "server.log")
+    server_log_path = args.server_log or os.path.join(output_dir, "server.log")
     if not args.no_server:
         # Check for stale process on the port
         import socket as _sock
