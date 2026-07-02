@@ -51,14 +51,18 @@ COMMON_VIDEOS = [
 
 CONFIGS = [
     "default_bf16_baseline_b200",
-    "default_mxfp4_hw_attn_only",
-    "default_mxfp4_linear_only_b200",
-    "default_mxfp4_hw_attn_mxfp4_linear",
-    "default_mxfp4_hw_rotation_attn_only",
     "default_mxfp8_hw_attn_only",
     "default_mxfp8_linear_only",
     "default_mxfp8_hw_attn_mxfp8_linear",
-    "default_mxfp8_hw_attn_only_p_max_issue",
+    # "default_mxfp4_hw_attn_only",
+    "default_nvfp4_hw_attn_only",
+    "default_mxfp4_hw_rotation_attn_only",
+    "default_mxfp4_hw_attn_only",
+    # "default_mxfp4_linear_only_b200",
+    # "default_mxfp4_hw_attn_mxfp4_linear",
+    # "default_mxfp4_hw_rotation_attn_only",
+
+    # "default_mxfp8_hw_attn_only_p_max_issue",
 
 ]
 
