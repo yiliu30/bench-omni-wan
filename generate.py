@@ -250,7 +250,6 @@ def build_server_cmd(cfg: dict[str, str]) -> list[str]:
     host = cfg.get("HOST", "127.0.0.1")
     port = cfg.get("PORT", "8099")
     tp = cfg.get("TP", "1")
-    tp = "1"
 
     cmd = [
         python, "-m", "vllm_omni.entrypoints.cli.main",
