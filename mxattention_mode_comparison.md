@@ -101,9 +101,24 @@ Higher PSNR and SSIM are better. Lower LPIPS, MAE, and MSE are better.
 
 ## Takeaways
 
+### Ranking
+
+The ranking is consistent across the distortion metrics:
+
+| Rank | PSNR / SSIM / MAE / MSE order | LPIPS order |
+|---:|---|---|
+| 1 | `mxattention_full` | `mxattention_full` |
+| 2 | `uos_pnq` | `uos_pnq` |
+| 3 | `pnq_only` | `pnq_only` |
+| 4 | `uos_only` | Sage3 `mxfp4_hw` |
+| 5 | `ocp_mxfp4_direct` | `uos_only` |
+| 6 | `uos_hadamard` or `hadamard_only` | `uos_hadamard` |
+| 7 | `hadamard_only` or `uos_hadamard` | `hadamard_only` |
+| 8 | Sage3 `mxfp4_hw` | `ocp_mxfp4_direct` |
+
 `mxattention_full` is closest to BF16 by every measured metric. It improves
-PSNR by about 5.3 dB over the direct path, raises SSIM from roughly 0.52 to
-0.76, and cuts LPIPS from roughly 0.42 to 0.22.
+PSNR by 5.31 dB over the direct MXAttention path, raises SSIM by 0.235, cuts
+LPIPS by 47.4%, cuts MAE by 57.5%, and cuts MSE by 69.5%.
 
 `uos_only` is only slightly better than `ocp_mxfp4_direct` in the video-level
 metrics. In this Wan run, UOS alone helps a little. `pnq_only` is materially
@@ -119,8 +134,92 @@ metrics.
 Sage3 `mxfp4_hw` should be treated as a related direct MXFP4 hardware baseline,
 not as one of the MXAttention modes. Its default QK smoothing means it is not
 identical to `ocp_mxfp4_direct` unless smoothing is disabled. In this generated
-Wan sample it has lower PSNR and SSIM than all three MXAttention modes, while
-its LPIPS is close to the two direct MXAttention variants.
+Wan sample it has lower PSNR and SSIM than all MXAttention modes, while its
+LPIPS is close to the direct and Hadamard-only variants.
+
+### Component Effects
+
+The following deltas use `ocp_mxfp4_direct` or the relevant lower-order mode as
+the local baseline. Positive PSNR/SSIM is better; negative LPIPS/MAE/MSE is
+better.
+
+| Change | PSNR dB | SSIM | LPIPS | MAE | MSE |
+|---|---:|---:|---:|---:|---:|
+| UOS alone vs direct | +0.0518 | +0.021164 | -0.003349 | -0.002529 | -0.000717 |
+| PNQ alone vs direct | +0.9660 | +0.125385 | -0.034637 | -0.023210 | -0.012340 |
+| Hadamard alone vs direct | -0.2988 | -0.184728 | -0.001366 | +0.010882 | +0.004276 |
+| PNQ on top of UOS | +4.6978 | +0.189801 | -0.147644 | -0.076351 | -0.039177 |
+| Hadamard on top of UOS | -0.3282 | -0.211155 | +0.000374 | +0.013530 | +0.004789 |
+| UOS on top of PNQ | +3.7836 | +0.085580 | -0.116356 | -0.055670 | -0.027554 |
+| UOS on top of Hadamard | +0.0224 | -0.005263 | -0.001610 | +0.000119 | -0.000203 |
+| Hadamard on top of UOS+PNQ | +0.5581 | +0.024308 | -0.049731 | -0.007050 | -0.002608 |
+| Sage3 `mxfp4_hw` vs direct | -0.3353 | -0.207040 | -0.003472 | +0.013078 | +0.004832 |
+
+The main signal is that PNQ and UOS are not additive in a simple linear way.
+PNQ alone is useful, UOS alone is weak, but UOS plus PNQ is much stronger than
+either component alone. `uos_pnq` reduces LPIPS by 29.9%, MAE by 44.1%, and MSE
+by 56.5% relative to `pnq_only`.
+
+Hadamard has a conditional effect. It is harmful without PNQ in this sample:
+`hadamard_only` and `uos_hadamard` both lose about 0.3 dB PSNR against their
+non-Hadamard counterparts and lose more than 0.18 SSIM against direct. With
+PNQ active, Hadamard becomes beneficial: `mxattention_full` improves over
+`uos_pnq` by 0.56 dB PSNR, 0.024 SSIM, 18.2% LPIPS, 10.0% MAE, and 12.3% MSE.
+
+### Frame-Level Stability
+
+The aggregate metric ordering is not coming from a few isolated frames. Against
+`ocp_mxfp4_direct`, frame-level wins over 81 frames were:
+
+| Mode | PSNR wins | SSIM wins | LPIPS wins |
+|---|---:|---:|---:|
+| `uos_only` | 40 / 81 | 77 / 81 | 40 / 81 |
+| `pnq_only` | 77 / 81 | 67 / 81 | 71 / 81 |
+| `hadamard_only` | 11 / 81 | 0 / 81 | 40 / 81 |
+| `uos_pnq` | 81 / 81 | 80 / 81 | 81 / 81 |
+| `uos_hadamard` | 11 / 81 | 0 / 81 | 36 / 81 |
+| `mxattention_full` | 81 / 81 | 81 / 81 | 81 / 81 |
+| Sage3 `mxfp4_hw` | 10 / 81 | 0 / 81 | 42 / 81 |
+
+`uos_pnq` beats `pnq_only` on 81 / 81 frames for PSNR and LPIPS and 80 / 81
+frames for SSIM. `mxattention_full` beats `uos_pnq` on 63 / 81 frames for PSNR,
+74 / 81 frames for SSIM, and 81 / 81 frames for LPIPS. That makes the final
+Hadamard gain smaller than the PNQ+UOS gain, but still broad rather than a
+single-frame artifact.
+
+### Interpretation
+
+For this Wan prompt and seed, the attention degradation seems dominated by the
+probability path and scale calibration rather than by Q/K rotation alone.
+Direct MXFP4 and UOS-only are close, which suggests changing the Q/K/V dynamic
+range without changing the probability quantization path is not enough.
+
+PNQ is the first large improvement. It likely reduces error in the softmax
+probability representation, which is where small attention-score perturbations
+can become visible video-level changes. UOS then makes PNQ much more effective,
+which suggests PNQ benefits from the wider or better-calibrated input scale
+rather than acting independently.
+
+Hadamard alone is not a quality fix here. It changes the Q/K distribution before
+MXFP4 quantization, but without PNQ the probability path still uses the direct
+MXFP4 kernel behavior and quality drops sharply by SSIM. In the full mode,
+Hadamard appears to complement PNQ by improving the already-stabilized path.
+The practical conclusion is to treat Hadamard as a full-path enhancer, not as a
+standalone replacement for PNQ or UOS.
+
+### Remaining Gaps
+
+Two runs would make the ablation matrix cleaner:
+
+| Missing control | Why it matters |
+|---|---|
+| `pnq_hadamard_only` with `qmax=6.0`, `pnq=True`, `hadamard=True` | Separates the Hadamard+PNQ interaction from UOS. The current sweep proves Hadamard helps on top of UOS+PNQ, but not whether it also helps on top of PNQ without UOS. |
+| Sage3 `mxfp4_hw` with `SAGE3_DISABLE_PER_BLOCK_MEAN=1` | Removes Sage3 QK smoothing so the hardware baseline is closer to `ocp_mxfp4_direct`. The current Sage3 row is useful, but it is not an exact direct-kernel control. |
+
+The current results are also single prompt / single seed. They are enough to
+validate that the MXAttention modes are wired and to expose the strongest
+component effects, but not enough for a final quality claim across prompts,
+motion types, or seeds.
 
 Detailed reports:
 
