@@ -1,0 +1,2 @@
+mode,candidate,frames,width,height,fps,duration,mae_mean,mse_mean,psnr_db_mean,ssim_mean,lpips_mean
+bf16_self_check,t2v_out.mp4,81,1280,720,16.0,5.06,0.0,0.0,inf,1.0,0.0
