@@ -5,15 +5,13 @@ BENCH_ROOT=${BENCH_ROOT:-/dev/shm/.tmp_yi/workspace/bench-omni-wan}
 OMNI_ROOT=${OMNI_ROOT:-/dev/shm/.tmp_yi/workspace/omni-wan}
 PLUGIN_ROOT=${PLUGIN_ROOT:-/dev/shm/.tmp_yi/workspace/vllm-qdq-plugin}
 MODEL=${MODEL:-/dev/shm/.tmp_yi/models/Wan-AI/Wan2.2-T2V-A14B-Diffusers}
-CUDA_DEVICES=${CUDA_DEVICES:-0,1}
-MXATTENTION_MODE=${MXATTENTION_MODE:-mxattention_full}
-MXATTENTION_QMAX=${MXATTENTION_QMAX:-7.25}
-MXATTENTION_USE_HADAMARD=${MXATTENTION_USE_HADAMARD:-1}
-OUTPUT=${1:-"$BENCH_ROOT/wan_t2v_a14b_${MXATTENTION_MODE}_1280x720_81f_40steps.mp4"}
+CUDA_DEVICES=${CUDA_DEVICES:-1,2}
+OUTPUT=${1:-"$BENCH_ROOT/wan_t2v_a14b_mxfp4_hw_attn_1280x720_81f_40steps.mp4"}
 LOG=${LOG:-"${OUTPUT%.mp4}.log"}
 
 if [[ ! -d "$MODEL" ]]; then
   echo "Missing Wan model directory: $MODEL" >&2
+  echo "Set MODEL=/path/to/Wan2.2-T2V-A14B-Diffusers and rerun." >&2
   exit 2
 fi
 
@@ -29,12 +27,9 @@ cd "$OMNI_ROOT"
   PYTHONPATH="$BENCH_ROOT/wan_flash_only_shim:$PLUGIN_ROOT/src:$OMNI_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
   WAN_OMNI_INIT_TIMEOUT="${WAN_OMNI_INIT_TIMEOUT:-3600}" \
   WAN_OMNI_STAGE_INIT_TIMEOUT="${WAN_OMNI_STAGE_INIT_TIMEOUT:-3600}" \
-  WAN_OMNI_ASYNC_OUTPUT_TIMEOUT="${WAN_OMNI_ASYNC_OUTPUT_TIMEOUT:-300}" \
-  VLLM_MXATTENTION=1 \
-  MXATTENTION_MODE="$MXATTENTION_MODE" \
-  MXATTENTION_QMAX="$MXATTENTION_QMAX" \
-  MXATTENTION_USE_HADAMARD="$MXATTENTION_USE_HADAMARD" \
+  VLLM_SAGE3_TRITON=1 \
   DIFFUSION_ATTENTION_BACKEND=SAGE_ATTN \
+  SAGE3_QUANT_FORMAT=mxfp4_hw \
   "$OMNI_ROOT/.venv/bin/python" \
     "$OMNI_ROOT/examples/offline_inference/text_to_video/text_to_video.py" \
     --model "$MODEL" \
