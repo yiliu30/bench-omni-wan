@@ -308,6 +308,12 @@ def main():
     parser.add_argument("--no-server", action="store_true")
     parser.add_argument("--server-log", default=None, help="Server log path (default: <output_dir>/server.log)")
     parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--cuda-devices", default=None,
+                        help="Override CUDA_DEVICES for the launched server")
+    parser.add_argument("--port", type=int, default=None,
+                        help="Override server port")
+    parser.add_argument("--tp", type=int, default=None,
+                        help="Override tensor parallel size")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -320,6 +326,12 @@ def main():
         sys.exit(1)
 
     cfg, export_env = load_env(str(env_path))
+    if args.cuda_devices is not None:
+        cfg["CUDA_DEVICES"] = args.cuda_devices
+    if args.port is not None:
+        cfg["PORT"] = str(args.port)
+    if args.tp is not None:
+        cfg["TP"] = str(args.tp)
     omni_root = Path(cfg.get("VLLM_OMNI_ROOT", ".")).resolve()
 
     # Output dir: CLI --output-dir > env OUTPUT_DIR > ./output/<env_name>

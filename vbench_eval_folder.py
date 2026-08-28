@@ -15,11 +15,6 @@ import sys
 import subprocess
 from pathlib import Path
 
-# VBench scoring
-sys.path.insert(0, "/home/yiliu7/workspace/VBench/scripts")
-from constant import DIM_WEIGHT, NORMALIZE_DIC, QUALITY_WEIGHT, SEMANTIC_WEIGHT
-
-
 DIMS = [
     "subject_consistency",
     "background_consistency",
@@ -46,19 +41,35 @@ SHORT_NAMES = {
     "human_action": "human_act",
 }
 
-PYTHON_BIN = "/home/yiliu7/workspace/venvs/omni/bin/python"
 EVAL_SCRIPT = str(Path(__file__).parent / "vbench_eval.py")
 
 
-def run_eval(video_dir: str, output_dir: str, seed: int, cuda: str):
+def vbench_paths(args: argparse.Namespace) -> tuple[Path, str]:
+    vbench_dir = Path(args.vbench_dir or os.environ.get("VBENCH_DIR", "/home/yiliu7/workspace/VBench"))
+    python_bin = args.vbench_python or os.environ.get("VBENCH_PYTHON", "/home/yiliu7/workspace/venvs/omni/bin/python")
+    if not (vbench_dir / "evaluate.py").is_file():
+        raise SystemExit(f"VBench checkout not found: {vbench_dir}")
+    if not Path(python_bin).is_file():
+        raise SystemExit(f"VBench Python not found: {python_bin}")
+    return vbench_dir, python_bin
+
+
+def vbench_constants(vbench_dir: Path):
+    sys.path.insert(0, str(vbench_dir / "scripts"))
+    from constant import DIM_WEIGHT, NORMALIZE_DIC, QUALITY_WEIGHT, SEMANTIC_WEIGHT
+    return DIM_WEIGHT, NORMALIZE_DIC, QUALITY_WEIGHT, SEMANTIC_WEIGHT
+
+
+def run_eval(video_dir: str, output_dir: str, seed: int, cuda: str, vbench_dir: Path, python_bin: str, prompt_file: str | None):
     """Run VBench evaluation using the seeded eval script."""
     env = os.environ.copy()
     env["PYTHONHASHSEED"] = str(seed)
     env["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     env["CUDA_VISIBLE_DEVICES"] = cuda
+    env["VBENCH_EVALUATE"] = str(vbench_dir / "evaluate.py")
 
     cmd = [
-        PYTHON_BIN, EVAL_SCRIPT,
+        python_bin, EVAL_SCRIPT,
         "--seed", str(seed),
         "--",
         "--videos_path", video_dir,
@@ -66,6 +77,8 @@ def run_eval(video_dir: str, output_dir: str, seed: int, cuda: str):
         "--mode=custom_input",
         "--output_path", output_dir,
     ]
+    if prompt_file:
+        cmd.extend(["--prompt_file", prompt_file])
 
     print(f"Running VBench eval on: {video_dir}")
     print(f"Output: {output_dir}")
@@ -102,38 +115,38 @@ def load_scores(output_dir: str) -> dict[str, float]:
     return scores
 
 
-def normalize_score(dim_key: str, raw: float) -> float:
+def normalize_score(dim_key: str, raw: float, normalize_dic: dict) -> float:
     """Apply VBench min-max normalization."""
-    if dim_key in NORMALIZE_DIC:
-        entry = NORMALIZE_DIC[dim_key]
+    if dim_key in normalize_dic:
+        entry = normalize_dic[dim_key]
         lo, hi = entry["Min"], entry["Max"]
         return (raw - lo) / (hi - lo) if hi != lo else 0.0
     return raw
 
 
-def compute_overall(raw_scores: dict[str, float]) -> dict[str, float]:
+def compute_overall(raw_scores: dict[str, float], constants) -> dict[str, float]:
     """Compute VBench quality/semantic/total from raw dimension scores."""
     normalized = {}
     for dim, val in raw_scores.items():
         key = dim.replace("_", " ")
-        normalized[key] = normalize_score(key, val)
+        normalized[key] = normalize_score(key, val, constants[1])
 
     quality_dims = [
         "subject consistency", "background consistency",
         "temporal flickering", "motion smoothness",
-        "aesthetic quality", "imaging quality",
+        "dynamic degree", "aesthetic quality", "imaging quality",
     ]
     semantic_dims = ["temporal style", "overall consistency"]
 
     q_scores = [normalized[d] for d in quality_dims if d in normalized]
-    q_weights = [DIM_WEIGHT[d] for d in quality_dims if d in normalized]
+    q_weights = [constants[0][d] for d in quality_dims if d in normalized]
     quality = sum(s * w for s, w in zip(q_scores, q_weights)) / sum(q_weights) if q_weights else 0
 
     s_scores = [normalized[d] for d in semantic_dims if d in normalized]
-    s_weights = [DIM_WEIGHT[d] for d in semantic_dims if d in normalized]
+    s_weights = [constants[0][d] for d in semantic_dims if d in normalized]
     semantic = sum(s * w for s, w in zip(s_scores, s_weights)) / sum(s_weights) if s_weights else 0
 
-    total = (quality * QUALITY_WEIGHT + semantic * SEMANTIC_WEIGHT) / (QUALITY_WEIGHT + SEMANTIC_WEIGHT)
+    total = (quality * constants[2] + semantic * constants[3]) / (constants[2] + constants[3])
 
     return {"quality_score": quality, "semantic_score": semantic, "total_score": total}
 
@@ -183,15 +196,43 @@ def print_table(scores: dict[str, float], overall: dict[str, float],
     print("")
 
 
+def markdown_report(scores: dict[str, float], overall: dict[str, float], summary: dict) -> str:
+    columns = [SHORT_NAMES[dim] for dim in DIMS] + ["quality", "semantic", "total"]
+    values = [scores.get(dim) for dim in DIMS] + [
+        overall["quality_score"], overall["semantic_score"], overall["total_score"],
+    ]
+    row = [f"{value:.4f}" if value is not None else "N/A" for value in values]
+    return "\n".join([
+        "# MXAttention Full — VBench Common-10 Results",
+        "",
+        f"- Videos: `{summary['video_dir']}`",
+        f"- Seed: `{summary['seed']}`",
+        f"- Evaluation GPU: `{summary['cuda_visible_devices']}`",
+        f"- VBench: `{summary['vbench_dir']}`",
+        "",
+        "| " + " | ".join(columns) + " |",
+        "|" + "|".join("---:" for _ in columns) + "|",
+        "| " + " | ".join(row) + " |",
+        "",
+        "BF16 and NVFP4 deltas are intentionally deferred: matching artifacts are not available in this workspace.",
+        "",
+    ])
+
+
 def main():
     parser = argparse.ArgumentParser(description="All-in-one VBench evaluation")
     parser.add_argument("video_dir", help="Path to folder containing .mp4 videos")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     parser.add_argument("--cuda", default="2,3", help="CUDA_VISIBLE_DEVICES (default: 2,3)")
+    parser.add_argument("--prompt-file", help="JSON video-name-to-prompt mapping for semantic dimensions")
+    parser.add_argument("--vbench-dir", help="VBench checkout (default: $VBENCH_DIR)")
+    parser.add_argument("--vbench-python", help="Python with VBench dependencies (default: $VBENCH_PYTHON)")
     parser.add_argument("--baseline", help="Path to baseline summary JSON for delta comparison")
     parser.add_argument("--output-dir", help="Override output directory (default: final-score/<basename>)")
     parser.add_argument("--skip-eval", action="store_true", help="Skip evaluation, just load existing results")
     args = parser.parse_args()
+    vbench_dir, python_bin = vbench_paths(args)
+    constants = vbench_constants(vbench_dir)
 
     video_dir = os.path.abspath(args.video_dir)
     basename = os.path.basename(video_dir)
@@ -205,11 +246,11 @@ def main():
 
     # Run eval
     if not args.skip_eval:
-        run_eval(video_dir, output_dir, args.seed, args.cuda)
+        run_eval(video_dir, output_dir, args.seed, args.cuda, vbench_dir, python_bin, args.prompt_file)
 
     # Load scores
     scores = load_scores(output_dir)
-    overall = compute_overall(scores)
+    overall = compute_overall(scores, constants)
 
     # Load baseline if provided
     baseline_scores = None
@@ -226,7 +267,7 @@ def main():
                     break
         else:
             baseline_scores = bl
-            baseline_overall = compute_overall(baseline_scores)
+            baseline_overall = compute_overall(baseline_scores, constants)
 
     # Print results
     print_table(scores, overall, baseline_scores, baseline_overall)
@@ -236,12 +277,17 @@ def main():
         "video_dir": video_dir,
         "seed": args.seed,
         "num_videos": len(list(Path(video_dir).glob("*.mp4"))),
+        "vbench_dir": str(vbench_dir),
+        "cuda_visible_devices": args.cuda,
         "scores": scores,
         "overall": overall,
     }
     summary_file = Path(output_dir) / "summary.json"
     summary_file.write_text(json.dumps(summary, indent=2))
+    report_file = Path(output_dir) / "report.md"
+    report_file.write_text(markdown_report(scores, overall, summary))
     print(f"Summary saved to: {summary_file}")
+    print(f"Report saved to: {report_file}")
 
 
 if __name__ == "__main__":

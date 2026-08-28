@@ -67,6 +67,11 @@ def parse_args() -> argparse.Namespace:
         help="Seed used for Python, NumPy, and PyTorch RNGs.",
     )
     parser.add_argument(
+        "--vbench-evaluate",
+        default=os.environ.get("VBENCH_EVALUATE"),
+        help="Path to VBench evaluate.py (default: $VBENCH_EVALUATE or legacy path).",
+    )
+    parser.add_argument(
         "evaluate_args",
         nargs=argparse.REMAINDER,
         help="Arguments forwarded to VBench evaluate.py. Prefix with --.",
@@ -84,8 +89,14 @@ def main() -> None:
     patch_numpy_sctypes()
     patch_pkg_resources_packaging()
 
-    sys.argv = [str(DEFAULT_VBENCH_EVALUATE), *evaluate_args]
-    runpy.run_path(str(DEFAULT_VBENCH_EVALUATE), run_name="__main__")
+    evaluate_path = Path(args.vbench_evaluate) if args.vbench_evaluate else DEFAULT_VBENCH_EVALUATE
+    if not evaluate_path.is_file():
+        raise SystemExit(
+            f"VBench evaluate.py not found: {evaluate_path}. "
+            "Set VBENCH_EVALUATE or pass --vbench-evaluate."
+        )
+    sys.argv = [str(evaluate_path), *evaluate_args]
+    runpy.run_path(str(evaluate_path), run_name="__main__")
 
 
 if __name__ == "__main__":
