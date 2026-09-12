@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import signal
 import subprocess
@@ -354,6 +355,13 @@ def main():
     seed_str = cfg.get("SEED", "")
     seed = int(seed_str) if seed_str else None
 
+    # Optional extra per-request /v1/videos form fields (e.g. dual-stage
+    # guidance + negative prompt). Single-line JSON; absent key = no change.
+    extra_fields = None
+    extra_json = cfg.get("EXTRA_VIDEO_FIELDS_JSON", "").strip()
+    if extra_json:
+        extra_fields = json.loads(extra_json)
+
     host = cfg.get("HOST", "127.0.0.1")
     port = int(cfg.get("PORT", "8099"))
     base_url = f"http://{host}:{port}"
@@ -365,6 +373,8 @@ def main():
     print(f"  Resolution: {width}x{height}, {num_frames} frames, {fps} fps")
     print(f"  Steps:      {num_inference_steps}")
     print(f"  Seed:       {seed}")
+    if extra_fields:
+        print(f"  Extra fields: {sorted(extra_fields)}")
     print(f"  Prompts:    {len(prompts)}")
     print(f"  Output dir: {output_dir}")
     print("=" * 60)
@@ -449,6 +459,7 @@ def main():
                     num_inference_steps=num_inference_steps,
                     fps=fps,
                     seed=seed,
+                    extra_fields=extra_fields,
                 )
                 elapsed = time.time() - t0
                 size_mb = os.path.getsize(output_path) / (1024 * 1024)
