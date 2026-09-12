@@ -30,6 +30,9 @@ later scoring work).
 | `xpu_sagev3_mxfp8_cachedit_fb33343839_xpu{0,1,2}.env` | Full-quality server+generation recipe, one per XPU (ports 8098/8099/8100) |
 | `xpu_sagev3_mxfp8_cachedit_fb33343839_xpu{0,1,2}_smoke.env` | Smoke variant (4 steps / 5 frames) |
 | `scripts/vbench_watchdog_3xpu.sh` | Campaign watchdog per XPU (canonical copy also at `vllm-omni-inner/wan/vbench_benchomni_watchdog3.sh`) |
+| `scripts/vbench_benchomni_watchdog3.sh` | Active per-XPU campaign watchdog (identical to the canonical copy in `vllm-omni-inner/wan/`) |
+| `scripts/monitor_black.sh` | Continuous guard: per-video black scan + quarantine, XPU server restart on black/step-stall, progress logging (incident history in section 10) |
+| `scripts/scan_black.py` | 9-frame luminance sampler used by the monitor (BLACK = min<12 AND std<8; healthy videos have min >= 73) |
 | `vbench_eval.py` / `vbench_eval.sh` / `vbench_eval_all.py` / `vbench_eval_folder.py` / `vbench_compare_common.py` | VBench scoring (section 8) |
 | `docs/vbench_dimensions.md` | VBench dimension reference (models, prompt counts, mechanics) |
 | `docs/vbench_common10_results.md` | Earlier 10-prompt result comparisons |
@@ -321,10 +324,52 @@ git history.
   specs all verified). A 3-way campaign (31/31/31, ports 8098/8099/8100)
   launched 04:16:57 UTC under `scripts/vbench_watchdog_3xpu.sh`.
 - 2026-09-12 ~04:50 UTC: per operator preference the run was reduced to
-  **2 XPUs** (xpu0/xpu1 only; xpu2 job stopped cleanly). xpu2's prompts were
-  merged into the active lists: `prompts_xpu0_3way.txt` = 46 prompts,
-  `prompts_xpu1_3way.txt` = 47 prompts (no overlap, full 93 coverage;
-  originals backed up as `*.bak-3way`). No job restart needed: each running
-  `generate.py` finishes its in-memory list, then its watchdog re-reads the
-  updated file on the next attempt and resume-skips what exists.
-- Next: monitor to 93/93, then VBench `imaging_quality` scoring (section 8).
+**2 XPUs** (xpu0/xpu1 only; xpu2 job stopped cleanly). xpu2's prompts were
+merged into the active lists: `prompts_xpu0_3way.txt` = 46 prompts,
+`prompts_xpu1_3way.txt` = 47 prompts (no overlap, full 93 coverage;
+originals backed up as `*.bak-3way`). No job restart needed: each running
+`generate.py` finishes its in-memory list, then its watchdog re-reads the
+updated file on the next attempt and resume-skips what exists.
+- 2026-09-12 07:27-07:57 UTC: morning kernel dev in `deepklox-sage3` updated
+  `sageattn_interface.py` (the v3-hybrid call now always passes the `lse`
+  argument), but the `.so` installed at 07:57 (md5 `f200d765`) was a STALE
+  5-param build (binding without `lse`). The 07:37 build in the tree's
+  `build/` dir (md5 `315eea85`) has the correct 6-param signature. Every
+  vLLM-Omni server started after 07:57 then died in the startup dummy run
+  with `sageattn_v3_hybrid(): incompatible function arguments`; the
+  long-lived 05:10 server (old consistent pair) kept producing videos until
+  it died ~14:06.
+- 2026-09-12 ~14:50-16:20 UTC: xpu1 attempts 2-4 all died at server boot
+  (the `.so` issue above). Diagnosis: dmesg clean (no segfault, RAS
+  counters zero), server log shows the dummy-run pybind error with the
+  invoked 6 args vs the 5-param binding. Fix: restored the 07:37 `.so`
+  into `deepklox-sage3/deepklox/` (stale one kept as
+  `_C...so.stale-f200d765.bak`); verified with a kernel smoke (HND+NHD
+  calls) and a full server boot (dummy run OK, 40/40 steps, video saved).
+- 2026-09-12 15:44 UTC: monitor v2 (step-stall check had been fixed that
+  morning but never exercised on a live job) misfired: tqdm's `0/40`
+  bar-init line matched the step regex and, combined with a stale 25-min
+  prime state from an intentional stop, it SIGTERM'd a healthy fresh job
+  ("STEP STALL ... step 0/40"). Separate find: the server renames itself
+  to `vLLM-Omni::DiffusionWorker` (case differs from cmdline
+  `vllm_omni...`), so `restart_xpu_server`'s case-sensitive matcher missed
+  it; the orphaned server then held port 8099 and burned 4 more watchdog
+  attempts ("Port 8099 is already in use").
+- 2026-09-12 16:15-16:24 UTC: monitor v3 + cutover to xpu2 (operator
+  instruction). Monitor: step state is now `step|epoch|jobpid` (new
+  generate.py process = fresh boot window); `0/40` bar-init counts as boot
+  state, not progress; kills are case-insensitive (`vLLM-Omni`/`vllm_omni`)
+  and also kill generate.py's server child by process group (the server
+  runs under `setsid`). Orphaned xpu1 server killed, xpu1 left idle.
+  `prompts_xpu2_3way.txt` = full 93-prompt list (31-line share backed up
+  as `.bak-3way`); watchdog relaunched as `vbench_benchomni_watchdog3.sh 2`
+  (port 8100); monitor loop/progress/black-restart mapping now cover xpu2.
+- 2026-09-12 17:05 UTC (now): 62/93 done on xpu2, 0 black so far, pace
+  ~16-17 min/video -> ETA ~01:00-01:30 UTC. Remaining: monitor to 93/93,
+  final full black sweep over all 93 (section 6), then VBench
+  `imaging_quality` scoring (section 8).
+
+Kernel-consistency note: videos 1-61 were produced by the pre-07:27 kernel
+(05:10 server build); video 62+ uses the 07:37 `deepklox-sage3` build
+(md5 `315eea85`). If dataset uniformity matters for scoring, regenerate all
+93 with one build before evaluating.
