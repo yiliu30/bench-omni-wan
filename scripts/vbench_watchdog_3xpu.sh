@@ -36,18 +36,19 @@ OUTDIR="${BASE}"
 say() { echo "$@" | tee -a "${STATUS}"; }
 
 xpu_probe() {
-  # Run in a FRESH subshell: re-sourcing the envs in an already-sourced
-  # shell reorders LD_LIBRARY_PATH and breaks torch (sycl undefined symbol
-  # _ZN4sycl3_V17handler... observed on D93, 2026-09-12).
-  bash -c "source /opt/gfx-deps/env.sh >/dev/null 2>&1; \
-           source /home/ubuntu/main_cri_toolchain/env.sh >/dev/null 2>&1; \
-           ZE_AFFINITY_MASK=${XPU} timeout 600 /opt/gfx-deps/venv/bin/python -c '
+  # Uses the env the script sourced at top level (the SAME env the server
+  # subprocess inherits — proven working). Do NOT re-source here: re-sourcing
+  # the two env files on top of an already-sourced shell reorders
+  # LD_LIBRARY_PATH and breaks torch (sycl undefined symbol
+  # _ZN4sycl3_V17handler... on D93 2026-09-12; both the original inline
+  # version and the heredoc version failed this way).
+  ZE_AFFINITY_MASK="${XPU}" timeout 600 /opt/gfx-deps/venv/bin/python -c '
 import torch
 assert torch.xpu.is_available() and torch.xpu.device_count() == 1, torch.xpu.device_count()
 t = torch.ones(4096, device="xpu")
 torch.xpu.synchronize()
 print("probe: xpu OK, sum", int(t.sum()))
-'"
+'
 }
 
 count_missing() {

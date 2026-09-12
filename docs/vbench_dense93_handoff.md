@@ -184,10 +184,20 @@ Two D93 lessons baked into `scripts/vbench_watchdog_3xpu.sh` (2026-09-12):
   900 s cap made slow jobs "timed out" client-side, took the server down
   (connection reset), and cascaded connection-refused failures across the
   rest of the list.
-- the XPU probe runs in a **fresh subshell**. Re-sourcing the two env files
-  inside an already-sourced shell reorders `LD_LIBRARY_PATH` and breaks
-  torch with `undefined symbol: _ZN4sycl3_V17handler...` (probe FAILED on
-  both XPUs on D93).
+- the XPU probe must use the env the script sourced **at top level** (the
+  same env the server subprocess inherits). Re-sourcing the two env files on
+  top of an already-sourced shell reorders `LD_LIBRARY_PATH` and breaks
+  torch with `undefined symbol: _ZN4sycl3_V17handler...`. On D93 both the
+  original inline version and a heredoc "fresh subshell" version failed
+  (the heredoc body still re-sourced inside the inherited env); the working
+  form is the probe with NO source lines at all (verified 2026-09-12).
+- 2026-09-12 14:06: a job on xpu1 hung ~45 min (device stall), only the
+  45-min client timeout surfaced it. The campaign monitor
+  (`tmp_yi_yiwan/vbench_dense93/monitor/monitor_black.sh`) now also does
+  **step-stall detection**: if a running XPU's denoise step counter doesn't
+  advance for 25 min it quarantines nothing but restarts that XPU's server
+  (same kill sequence as the black-video path) so the watchdog resumes with
+  a fresh server.
 
 For 2 XPU: same, `for x in 0 1`, and either keep the 3-way lists (xpu2's 31
 stay missing until later) or use the original 47/46 split
