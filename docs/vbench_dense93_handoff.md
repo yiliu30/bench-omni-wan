@@ -295,9 +295,15 @@ git history.
 
 - 2026-09-11 (old node, 2 XPU): smoke passed both ways; full campaign ran
   00:48–~01:57 UTC → 8/93 videos, cut off by migration.
-- 2026-09-12 (node D93, 3 XPU): model symlink checked (was already correct),
+- 2026-09-12 (node D93): model symlink checked (was already correct),
   smokes passed on xpu0/1/2 (kernel md5, cache-dit, fallback counts, video
-  specs all verified). Full 3-way campaign (31/31/31, ports 8098/8099/8100)
-  launched 04:16:57 UTC under `scripts/vbench_watchdog_3xpu.sh`; 11/93 done
-  at ~04:35 UTC.
+  specs all verified). A 3-way campaign (31/31/31, ports 8098/8099/8100)
+  launched 04:16:57 UTC under `scripts/vbench_watchdog_3xpu.sh`.
+- 2026-09-12 ~04:50 UTC: per operator preference the run was reduced to
+  **2 XPUs** (xpu0/xpu1 only; xpu2 job stopped cleanly). xpu2's prompts were
+  merged into the active lists: `prompts_xpu0_3way.txt` = 46 prompts,
+  `prompts_xpu1_3way.txt` = 47 prompts (no overlap, full 93 coverage;
+  originals backed up as `*.bak-3way`). No job restart needed: each running
+  `generate.py` finishes its in-memory list, then its watchdog re-reads the
+  updated file on the next attempt and resume-skips what exists.
 - Next: monitor to 93/93, then VBench `imaging_quality` scoring (section 8).
