@@ -178,6 +178,17 @@ The watchdog applies the env prelude itself (see script header). It logs to
 `<base>/logs/xpu${XPU}_watchdog3.log` (per-attempt missing counts) and
 `<base>/logs/xpu${XPU}_full_server_n2.log` (server).
 
+Two D93 lessons baked into `scripts/vbench_watchdog_3xpu.sh` (2026-09-12):
+- per-job poll timeout is `--timeout 2700` (45 min). The earlier 900 s cap
+  matched the old node's ~6 min/video, but D93 runs ~14 min/video — a
+  900 s cap made slow jobs "timed out" client-side, took the server down
+  (connection reset), and cascaded connection-refused failures across the
+  rest of the list.
+- the XPU probe runs in a **fresh subshell**. Re-sourcing the two env files
+  inside an already-sourced shell reorders `LD_LIBRARY_PATH` and breaks
+  torch with `undefined symbol: _ZN4sycl3_V17handler...` (probe FAILED on
+  both XPUs on D93).
+
 For 2 XPU: same, `for x in 0 1`, and either keep the 3-way lists (xpu2's 31
 stay missing until later) or use the original 47/46 split
 (`prompts_xpu0.txt` / `prompts_xpu1.txt` with the legacy

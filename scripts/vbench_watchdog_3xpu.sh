@@ -36,15 +36,18 @@ OUTDIR="${BASE}"
 say() { echo "$@" | tee -a "${STATUS}"; }
 
 xpu_probe() {
-  source /opt/gfx-deps/env.sh
-  source /home/ubuntu/main_cri_toolchain/env.sh
-  ZE_AFFINITY_MASK="${XPU}" timeout 600 /opt/gfx-deps/venv/bin/python -c '
+  # Run in a FRESH subshell: re-sourcing the envs in an already-sourced
+  # shell reorders LD_LIBRARY_PATH and breaks torch (sycl undefined symbol
+  # _ZN4sycl3_V17handler... observed on D93, 2026-09-12).
+  bash -c "source /opt/gfx-deps/env.sh >/dev/null 2>&1; \
+           source /home/ubuntu/main_cri_toolchain/env.sh >/dev/null 2>&1; \
+           ZE_AFFINITY_MASK=${XPU} timeout 600 /opt/gfx-deps/venv/bin/python -c '
 import torch
 assert torch.xpu.is_available() and torch.xpu.device_count() == 1, torch.xpu.device_count()
 t = torch.ones(4096, device="xpu")
 torch.xpu.synchronize()
 print("probe: xpu OK, sum", int(t.sum()))
-'
+'"
 }
 
 count_missing() {
@@ -59,7 +62,7 @@ count_missing() {
 for attempt in 1 2 3 4 5; do
   say "=== xpu${XPU} attempt ${attempt} $(date -u +%FT%TZ); missing before: $(count_missing)"
   "${PY}" "${BENCH}/generate.py" "${BENCH}/${ENV_FILE}" \
-    --prompt-file "${PROMPTS}" --timeout 900 \
+    --prompt-file "${PROMPTS}" --timeout 2700 \
     --server-log "${LOGS}/xpu${XPU}_full_server_n2.log" >> "${STATUS}" 2>&1 || true
   missing="$(count_missing)"
   say "=== xpu${XPU} attempt ${attempt} finished; missing now: ${missing}"
