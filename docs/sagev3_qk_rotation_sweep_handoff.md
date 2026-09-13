@@ -85,3 +85,16 @@ VMAF/visual inspection.
 
 Black scan:
     /opt/gfx-deps/venv/bin/python3 /workspace/tmp_yi_yiwan/vbench_dense93/monitor/scan_black.py <mp4>
+
+## Monitoring (standing)
+`/workspace/tmp_yi_yiwan/monitor_wan/monitor_wan_black.sh` (container pid
+tracked in `monitor_wan.pid`) black-scans every new/changed top-level mp4
+in /workspace/tmp_yi_yiwan every 120s (stability gate 90s so in-flight
+encodes are skipped). Log: `monitor_wan/monitor_wan_black.log`. BLACK
+videos are logged (once per file version) but NOT moved. First full pass
+(2026-09-13): 72 ok, 4 BLACK — old svdquant mxfp4 experimental artifacts
+(`wan22_output_svdquant_mxfp4_r32_i1_b0_39_*`, `*_embedout_*`,
+`_r32_i2_nofallback_*`, `_r128_i1_nofallback_*`), kept in place. Note: the
+older dense93 monitor's BLACK case-pattern (`*"| BLACK")`) was also too
+strict (scan line ends `| BLACK <<< BLACK`) — it never fired because
+dense93 had zero blacks.
