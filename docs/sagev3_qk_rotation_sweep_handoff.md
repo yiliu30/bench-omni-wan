@@ -98,3 +98,14 @@ videos are logged (once per file version) but NOT moved. First full pass
 older dense93 monitor's BLACK case-pattern (`*"| BLACK")`) was also too
 strict (scan line ends `| BLACK <<< BLACK`) — it never fired because
 dense93 had zero blacks.
+
+## Monitoring update (2026-09-13 14:5x)
+`monitor_wan_black.sh` is now cron-resurrected: a root crontab entry
+(`* * * * * /usr/bin/docker exec -d yi-wan bash /workspace/tmp_yi_yiwan/monitor_wan/monitor_wan_black.sh`)
+starts it within 1 min of any crash or container restart. The script's
+single-instance guard was hardened (pid must be alive AND its cmdline must
+contain the script name, so a stale pidfile after a restart cannot block a
+fresh start). Verified end-to-end twice (kill -> auto-restart at the next
+minute tick). Residual gap: container restart policy is `no`, so after a
+FULL node reboot the yi-wan container itself must be started first
+(`docker update --restart unless-stopped yi-wan` would close this).
