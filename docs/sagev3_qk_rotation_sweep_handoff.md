@@ -94,7 +94,11 @@ encodes are skipped). Log: `monitor_wan/monitor_wan_black.log`. BLACK
 videos are logged (once per file version) but NOT moved. First full pass
 (2026-09-13): 72 ok, 4 BLACK — old svdquant mxfp4 experimental artifacts
 (`wan22_output_svdquant_mxfp4_r32_i1_b0_39_*`, `*_embedout_*`,
-`_r32_i2_nofallback_*`, `_r128_i1_nofallback_*`), kept in place. Note: the
+`_r32_i2_nofallback_*`, `_r128_i1_nofallback_*`). QUARANTINED
+2026-09-13 to `/workspace/tmp_yi_yiwan/black_quarantine/` with
+`_black_<ts>` suffix (dense93 convention); the watched dir now holds
+72/72 verified-ok videos. No md/sh/py/tsv file referenced the four
+files before the move. Note: the
 older dense93 monitor's BLACK case-pattern (`*"| BLACK")`) was also too
 strict (scan line ends `| BLACK <<< BLACK`) — it never fired because
 dense93 had zero blacks.
