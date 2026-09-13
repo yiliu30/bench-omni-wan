@@ -315,7 +315,7 @@ Things that do NOT need to move: model weights (re-download or re-share if
 the store isn't mounted), venv (comes with the container image), this repo's
 git history.
 
-## 10. Status (2026-09-12)
+## 10. Status (2026-09-12/13) — COMPLETE
 
 - 2026-09-11 (old node, 2 XPU): smoke passed both ways; full campaign ran
   00:48–~01:57 UTC → 8/93 videos, cut off by migration.
@@ -369,7 +369,38 @@ updated file on the next attempt and resume-skips what exists.
   final full black sweep over all 93 (section 6), then VBench
   `imaging_quality` scoring (section 8).
 
-Kernel-consistency note: videos 1-61 were produced by the pre-07:27 kernel
-(05:10 server build); video 62+ uses the 07:37 `deepklox-sage3` build
-(md5 `315eea85`). If dataset uniformity matters for scoring, regenerate all
-93 with one build before evaluating.
+- 2026-09-12 23:04 UTC: `sageattn_interface.py` touched again (interactive
+  rebase of `sagev3-clean-lse-qw` in flight, return_lse commit,
+  `UU csrc/flash_api.cpp` unmerged); it still unconditionally passes 6
+  args while the installed `.so` is the 5-param `f200d765` -> xpu2 server
+  died again at the startup dummy run (23:05). Operator: use the existing
+  compiled `.so`, do not wait for the rebuild.
+- 2026-09-12 23:07-23:53 UTC: node D93-C unstable: five host reboots
+  (23:07, 23:11, 23:20, 23:33, 23:53 UTC; kernel crash files in
+  `/var/crash`, not campaign-related). Recovery each time: `docker start
+  yi-wan` + monitor restart; 86/93 reached before this outage. Flagged to
+  operator for admin follow-up.
+- 2026-09-13 ~00:10 UTC: mismatch resolved WITHOUT touching the kernel
+  tree (rebase mid-flight): Python-level compat shim at
+  `/workspace/deepklox-sage3-compat/sitecustomize.py`, prepended to
+  `PYTHONPATH` in the three `xpu_sagev3_*.env` files. It drops the lse arg
+  when it detects the 5-param binding and no-ops automatically on a 6-param
+  (lse) build; prints `SAGEATTN_SHIM_ACTIVE` to the server log when
+  engaged. Consistency test (interface kernel call on xpu0/1/2) passed.
+  To revert: remove the `deepklox-sage3-compat:` prefix from `PYTHONPATH`
+  (and copy the compat dir along when switching nodes, until a 6-param
+  rebuild is installed).
+- 2026-09-13 00:16 UTC: per operator, the final 7 videos moved off xpu2
+  onto **xpu0/xpu1 only**: disjoint split xpu0=4 / xpu1=3
+  (`prompts_xpu*_3way.txt`; originals as `*.bak-pre-split7`, missing set in
+  `missing7.txt`); xpu2 fully stopped (watchdog + job + server), left idle.
+- 2026-09-13 00:21-01:20 UTC: xpu0/xpu1 servers booted clean (dummy run
+  OK), 7 videos at ~15-19 s/step -> **93/93 at 01:20 UTC**. Final full
+  black sweep over all 93: 93 ok, 0 black, 0 quarantines. Both watchdogs
+  exit "campaign complete"; monitor left running. **Campaign complete.**
+
+Kernel-consistency note: videos 1-61 by the pre-07:27 kernel (05:10 server
+build), 62-86 by the 07:37 `deepklox-sage3` build (md5 `315eea85`), 87-93
+by the 5-param `f200d765` build + compat shim (same call semantics, lse
+path unavailable). Three builds in one dataset; if uniformity matters for
+scoring, regenerate all 93 with one build before evaluating.
