@@ -110,3 +110,17 @@ minute tick). Residual gap CLOSED: yi-wan now has restart policy
 `unless-stopped` (set 2026-09-13), so after a full node reboot the
 container auto-starts and the cron line resurrects the monitor within
 1 min. (Reversible: `docker update --restart no yi-wan`.)
+
+## Monitoring alert-path verification (2026-09-13 15:0x)
+End-to-end test of the BLACK alert path: a synthetic 5-frame black 720p
+mp4 (`_test_black.mp4`, generator kept at
+`/workspace/tmp_yi_yiwan/_make_test_black.py`) was dropped into the
+watched dir; the monitor logged
+`BLACK VIDEO: _test_black.mp4 (...)` on its next cycle and recorded it in
+state (one alarm per file version, no re-alarm). Test file removed
+afterwards. This test also caught a second pattern bug: the first "fix"
+had only added state recording but kept the end-anchored case pattern
+`*"| BLACK")`, which still can't match `... | BLACK <<< BLACK` (an
+intermediate run was logged as UNKNOWN). Final case patterns:
+`*ERROR*`, `*| BLACK*`, `*| ok)`, `*NO_FRAMES*` (one-shot, state-recorded),
+else UNKNOWN (retried next cycle).
