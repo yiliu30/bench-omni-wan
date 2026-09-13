@@ -106,6 +106,7 @@ starts it within 1 min of any crash or container restart. The script's
 single-instance guard was hardened (pid must be alive AND its cmdline must
 contain the script name, so a stale pidfile after a restart cannot block a
 fresh start). Verified end-to-end twice (kill -> auto-restart at the next
-minute tick). Residual gap: container restart policy is `no`, so after a
-FULL node reboot the yi-wan container itself must be started first
-(`docker update --restart unless-stopped yi-wan` would close this).
+minute tick). Residual gap CLOSED: yi-wan now has restart policy
+`unless-stopped` (set 2026-09-13), so after a full node reboot the
+container auto-starts and the cron line resurrects the monitor within
+1 min. (Reversible: `docker update --restart no yi-wan`.)
