@@ -14,7 +14,9 @@ import packaging.version
 import torch
 
 
-DEFAULT_VBENCH_EVALUATE = Path("/home/yiliu7/workspace/VBench/evaluate.py")
+DEFAULT_VBENCH_EVALUATE = Path(
+    os.environ.get("VBENCH_EVALUATE", "/home/yiliu7/workspace/VBench/evaluate.py")
+)
 
 
 def set_seed(seed: int) -> None:
