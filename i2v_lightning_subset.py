@@ -32,6 +32,8 @@ FALLBACK_BLOCKS = "0,33,34,38"
 ALL_BLOCKS = ",".join(map(str, range(40)))
 RECIPES = ("bf16_flash", "mxfp4_sage_flash4")
 NO_FALLBACK_RECIPE = "mxfp4_sage_no_fallback"
+PURE_RECIPE = "mxfp4_sage_v3_pure"
+STANDALONE_RECIPES = (NO_FALLBACK_RECIPE, PURE_RECIPE)
 RECIPE_FIELDS = frozenset((
     "RECIPE", "QUANTIZATION", "ATTENTION_BACKEND", "SAGE_ATTN3_XPU_VARIANT",
     "SAGE_ATTN_FORCE_FALLBACK", "SAGE_ATTN_FALLBACK",
@@ -42,6 +44,7 @@ RECIPE_ENV_FILES = {
     "bf16_flash": Path(__file__).with_name("i2v_lightning_bf16.env"),
     "mxfp4_sage_flash4": Path(__file__).with_name("i2v_lightning_sage.env"),
     NO_FALLBACK_RECIPE: Path(__file__).with_name("i2v_lightning_sage_no_fallback.env"),
+    PURE_RECIPE: Path(__file__).with_name("i2v_lightning_sage_pure.env"),
 }
 
 
@@ -75,16 +78,17 @@ def config(path: Path) -> dict[str, str]:
     if exported:
         raise ValueError(f"Unexpected [env] settings in {path}; recipe settings must be explicit")
     recipe = settings.get("RECIPE")
-    if recipe is not None and recipe != NO_FALLBACK_RECIPE:
+    if recipe is not None and recipe not in STANDALONE_RECIPES:
         raise ValueError("Pass i2v_lightning_50.env to the paired runner; recipe envs load automatically")
     cfg = {key: value for key, value in settings.items() if key not in RECIPE_FIELDS}
-    if recipe == NO_FALLBACK_RECIPE:
+    if recipe in STANDALONE_RECIPES:
         baseline, _ = load_env(str(Path(__file__).with_name("i2v_lightning_50.env")))
+        forced = "" if recipe == NO_FALLBACK_RECIPE else FALLBACK_BLOCKS
         if (set(cfg) != set(baseline) | {"FALLBACK_BLOCKS"}
                 or any(cfg[key] != baseline[key] for key in baseline if key != "OUTPUT")
-                or cfg["FALLBACK_BLOCKS"] != ""
+                or cfg.get("FALLBACK_BLOCKS") != forced
                 or cfg["OUTPUT"] == baseline["OUTPUT"]):
-            raise ValueError("No-fallback run must match the paired campaign except OUTPUT and forced blocks")
+            raise ValueError(f"{recipe} run must match the paired campaign except OUTPUT and forced blocks")
     required = ("MODEL", "METADATA", "ARCHIVE", "CROPS", "OUTPUT", "VLLM_OMNI_ROOT",
                 "DEEPKLOX_REPO", "PYTHON", "DEVICES", "PORT_BASE")
     for key in required:
@@ -110,12 +114,12 @@ def recipe_config(cfg: dict[str, str], recipe: str) -> dict[str, str]:
         "RECIPE": recipe,
         "QUANTIZATION": "none" if recipe == "bf16_flash" else "mxfp4",
         "ATTENTION_BACKEND": "SAGE_ATTN_3",
-        "SAGE_ATTN3_XPU_VARIANT": "hybrid",
+        "SAGE_ATTN3_XPU_VARIANT": "pure_mxfp4" if recipe == PURE_RECIPE else "hybrid",
         "SAGE_ATTN_FORCE_FALLBACK": "flash",
         "SAGE_ATTN_FALLBACK": "sdpa",
         "SAGE_ATTN_FORCE_SDPA_BLOCKS": (
             ALL_BLOCKS if recipe == "bf16_flash" else
-            FALLBACK_BLOCKS if recipe == "mxfp4_sage_flash4" else ""
+            "" if recipe == NO_FALLBACK_RECIPE else FALLBACK_BLOCKS
         ),
         "SAGE_ATTN_REPORT_FALLBACKS": "1",
         "VLLM_OMNI_XPU_STAGE_WAN_WEIGHTS": "1",
@@ -376,7 +380,7 @@ def verify_routing(log_path: Path, recipe: str) -> None:
     forced = values.get("forced_sdpa", -1)
     flash = values.get("fallback_flash", -1)
     if ((recipe == "bf16_flash" and (sage != 0 or forced <= 0 or flash <= 0))
-            or (recipe == "mxfp4_sage_flash4" and (sage <= 0 or forced <= 0 or flash <= 0))
+            or (recipe in ("mxfp4_sage_flash4", PURE_RECIPE) and (sage <= 0 or forced <= 0 or flash <= 0))
             or (recipe == NO_FALLBACK_RECIPE and (sage <= 0 or forced != 0 or flash != 0))):
         raise RuntimeError(f"Unexpected Sage routing in {log_path}: {values}")
 
@@ -432,12 +436,14 @@ def serve_and_run(cfg: dict[str, str], manifest: dict, device: int, recipe: str,
             else:
                 raise TimeoutError(f"Server startup timed out; see {log_path}")
             server_log = log_path.read_text(encoding="utf-8", errors="replace")
-            forced = recipe_config(cfg, recipe)["SAGE_ATTN_FORCE_SDPA_BLOCKS"]
-            forced_log = "[" + ", ".join(forced.split(",")) + "]"
+            settings = recipe_config(cfg, recipe)
+            forced = settings["SAGE_ATTN_FORCE_SDPA_BLOCKS"]
+            forced_log = "[" + ", ".join(forced.split(",")) + "]" if forced else ""
             forced_verified = (f"transformer blocks: {forced_log}" in server_log if forced else
                                "fallback for transformer blocks:" not in server_log)
             if (not forced_verified
-                    or "SageAttention3 XPU kernel variant: hybrid" not in server_log
+                    or f"SageAttention3 XPU kernel variant: {settings['SAGE_ATTN3_XPU_VARIANT']}"
+                    not in server_log
                     or (recipe != "bf16_flash" and (
                         "Building quantization config: mxfp4" not in server_log
                         or "Using XPUMxFp4LinearKernel for MXFP4 GEMM" not in server_log))):
@@ -555,9 +561,12 @@ def run(cfg: dict[str, str], manifest: dict, retry_failed: bool = False,
                     or record.get("video") != validate_video(root / f"{item['stem']}.mp4")):
                 raise RuntimeError(f"Invalid {recipe} video record: {item['stem']}")
         if not smoke:
+            forced = recipe_config(cfg, recipe)["SAGE_ATTN_FORCE_SDPA_BLOCKS"]
             write_json(Path(cfg["OUTPUT"]) / "summary.json",
                        {"recipe": recipe, "videos": len(videos), "frames_per_video": 81,
-                        "forced_fallback_blocks": [], "vbench_scored": False})
+                        "forced_fallback_blocks": [int(block) for block in forced.split(",")
+                                                   if block.strip()],
+                        "vbench_scored": False})
     if smoke:
         details = {"manifest_sha256": digest(manifest_path), "paired_items": 1,
                    "bf16_log": str(Path(cfg["OUTPUT"]) / "bf16_flash/server_xpu0.log"),
@@ -577,7 +586,7 @@ def main() -> None:
     path = Path(args.env_file) if Path(args.env_file).is_absolute() else Path(__file__).parent / args.env_file
     selected, _ = load_env(str(path))
     cfg = config(path)
-    recipes = (NO_FALLBACK_RECIPE,) if selected.get("RECIPE") == NO_FALLBACK_RECIPE else RECIPES
+    recipes = ((selected["RECIPE"],) if selected.get("RECIPE") in STANDALONE_RECIPES else RECIPES)
     if args.action == "extract-official":
         extract_official(cfg)
     elif args.action == "dry-run":
