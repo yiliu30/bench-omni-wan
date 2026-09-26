@@ -79,15 +79,29 @@ standalone recipe `mxfp4_sage_v3_pure` (same pattern as `mxfp4_sage_no_fallback`
   seq=33600 (=64*525, 64-aligned, no alignment fallback); blocks 0,33,34,38 ->
   `forced_sdpa`->`fallback_flash`; cross-attn -> `cross_sdpa`; `sdpa_fallback` must be 0.
 
+## Smoke result (2026-09-27 00:35 CST, PREFLIGHT_SMOKE_RC=0)
+
+- Video `results/i2v_lightning_50_sage_v3_pure_mxfp4/mxfp4_sage_v3_pure/000.mp4`
+  — 8,045,622 bytes, 81 frames @ 16 fps, 54.6 s generation,
+  sha256 6d24e23f3bea050a9c21f72bf60b9d0cbf1501db4f19a8e884fee12b3d6c6b49.
+- Routing audit (server_xpu0.log): `variant: pure_mxfp4`; counters
+  `sage=180, forced_sdpa=20, cross_sdpa=200, sdpa_fallback=0, nonfinite_sdpa=0,
+  fallback_flash=20, fallback_sdpa=200` — forced/(self) = 4/40 exactly the recipe's
+  blocks 0,33,34,38 (flash), zero alignment warnings, zero kernel failures.
+
 ## Run / monitor
 
     sudo -n docker exec yi-wan bash /home/yiliu7/scratch/run_pure_preflight_smoke.sh   # smoke (1 video, XPU0)
     sudo -n docker exec -d yi-wan bash /home/yiliu7/scratch/run_pure_campaign.sh ...   # full 50
 
 - No-build GPU note: subset uses XPUs 0-3; do not hold `/home/yiliu7/scratch/gpu.lock`.
-- Campaign log: `results/i2v_lightning_50_sage_v3_pure_mxfp4.nohup.log`;
-  per-server logs `.../mxfp4_sage_v3_pure/server_xpu{0..3}.log`.
+- Campaign launch (detached, survives session):
+  `sudo -n docker exec -d yi-wan bash /home/yiliu7/scratch/run_pure_campaign.sh`
+- Campaign log: `results/i2v_lightning_50_sage_v3_pure_mxfp4.nohup.log` (ends with
+  `CAMPAIGN_RC=0`); per-server logs `.../mxfp4_sage_v3_pure/server_xpu{0..3}.log`.
 - Progress: `ls results/i2v_lightning_50_sage_v3_pure_mxfp4/mxfp4_sage_v3_pure/[0-9][0-9][0-9].mp4 | wc -l`
-- ETA: no_fallback arm median 51.5 s/video; 50 videos / 4 devices ≈ 12-14 min compute
-  plus per-server model init (~15-25 min, overlapped) → expect the whole run well under
-  ~1.5 h.
+- ETA: measured smoke 54.6 s/video (campaign median of prior arm 51.5 s);
+  50 videos / 4 devices ≈ 12 min compute + ~3 min per-server init (parallel)
+  ⇒ whole campaign ~20 min (54.6 s × 50 = 45.5 min if run serially).
+- Resume: rerun the same command; completed+verified records are skipped, failed ones
+  need `--retry-failed` (archives the failed record/partial video first).
