@@ -105,3 +105,21 @@ standalone recipe `mxfp4_sage_v3_pure` (same pattern as `mxfp4_sage_no_fallback`
   ⇒ whole campaign ~20 min (54.6 s × 50 = 45.5 min if run serially).
 - Resume: rerun the same command; completed+verified records are skipped, failed ones
   need `--retry-failed` (archives the failed record/partial video first).
+
+## Campaign incident log
+
+- Campaign 1 (00:36 CST, driver died RC=1 at 33/50): items 004 (device 0) AND 033
+  (device 1) each produced a fully black video — ALL 81 sampled frames
+  gray-mean 0.0 / std 0.0 (validator `Black/flat sampled frame`). This is NOT the
+  content-edge the "dramatic black background" prompt suggests: hybrid arm videos for
+  the same prompt/seed/config are normal, and other pure videos are normal. Pure
+  kernel counters during those generations showed
+  `sage=180, forced_sdpa=20, sdpa_fallback=0, nonfinite_sdpa=0` — i.e. no NaN caught
+  by the backend's finite-guard and no fallback path; the collapse is upstream/inside
+  the pure attention path.
+- Campaign 2 (00:52 CST, `--retry-failed`): regenerates 004/033 determinism test.
+  Outcome + instrumented repro (`/home/yiliu7/sage-probe/pure_repro/`, per-call
+  max|Q/K/V/out| + NaN/Inf counts via sitecustomize wrapper around
+  `deepklox.sageattn_v3`) recorded in the final report.
+- Keep ALL black partials (`*.failed_*.mp4`, `*.partial.mp4`) — do not delete; they
+  are the repro ground truth for the port defect hunt.
