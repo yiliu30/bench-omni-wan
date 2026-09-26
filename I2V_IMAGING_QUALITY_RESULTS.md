@@ -11,6 +11,12 @@ exploratory subset measurements, **not official full-suite VBench-I2V scores**.
 | MXFP4 Sage Hybrid, Flash blocks `0,33,34,38` | 50 | 72.3147 | 0.723147 | -0.005264 |
 | MXFP4 Sage Hybrid, no forced fallback | 50 | 71.2530 | 0.712530 | -0.015881 |
 
+Here **MXFP4 refers to online quantization of model linear-layer weights
+and activations for linear GEMM** (`--quantization mxfp4`), not MXFP4
+attention. Sage V3 Hybrid handles self-attention separately; the two
+MXFP4 recipes differ only in whether blocks `0,33,34,38` are forced to
+use Flash fallback. Cross-attention uses SDPA in both.
+
 The four-block recipe scored above BF16 on 21 of 50 individual pairs;
 the no-forced-fallback recipe did so on 18 of 50. These pair counts and
 mean differences are descriptive, not a significance test.
