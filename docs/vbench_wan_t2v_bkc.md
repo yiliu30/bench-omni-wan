@@ -21,7 +21,7 @@ Validated 2026-10-05 on an 8-XPU CRI node (containerized, TP=1): smoke
 | Model | `Wan2.2-T2V-A14B-Diffusers` (~118 GB) | dual-expert `WanPipeline`; must contain `transformer/` + `transformer_2/` (12 safetensors shards each), `text_encoder/` (UMT5, 3 shards), `vae/`, `tokenizer/`, `scheduler/`, and `model_index.json` with `boundary_ratio: 0.875` |
 | Serving | vLLM-Omni (`vllm-omni` repo) with the `SAGE_ATTN_3` diffusion attention backend | entry point is `python -m vllm_omni.entrypoints.cli.main serve … --omni` (plain `vllm serve` does not carry the omni wiring on XPU builds) |
 | vllm core | wheel in the container venv with `mxfp8` + `modelopt_mxfp8` in `QUANTIZATION_METHODS` | required for `--quantization mxfp8` (online quant of the bf16 checkpoint) |
-| vllm omni |https://github.com/intel-innersource/applications.ai.gpu.vllm-omni/tree/bench-wan|  |
+| vllm omni |[bench-wan](https://github.com/intel-innersource/applications.ai.gpu.vllm-omni/tree/bench-wan)|  |
 | Attention kernel | `deepklox` checkout exposing `deepklox.sageattn_interface.sageattn_v3_hybrid(q, k, v, tensor_layout, sparsity)` | the V3-hybrid binding must be built in (`DEEPKLOX_SAGEATTN_V3=1` build flag); backend calls it with `tensor_layout="NHD"` — no lse/compat shim needed against a current interface |
 | Step cache | `cache_dit` importable in the venv | enabled via `--cache-backend cache_dit`; gives the bulk of the 40-step speedup (§9) |
 | Linear | MXFP8 | |
