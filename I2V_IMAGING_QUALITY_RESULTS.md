@@ -8,8 +8,8 @@ exploratory subset measurements, **not official full-suite VBench-I2V scores**.
 | Recipe | Valid videos | Mean raw MUSIQ-SPAQ | VBench-normalized `/100` | Difference from BF16 |
 |---|---:|---:|---:|---:|
 | BF16 Flash | 50 | 72.8411 | 0.728411 | baseline |
-| MXFP4 Sage Hybrid, Flash blocks `0,33,34,38` | 50 | 72.3147 | 0.723147 | -0.005264 |
-| MXFP4 Sage Hybrid, no forced fallback | 50 | 71.2530 | 0.712530 | -0.015881 |
+| Sage V3, Flash blocks `0,33,34,38`, MXFP4 Linear | 50 | 72.3147 | 0.723147 | -0.005264 |
+| Sage V3, no forced fallback, MXFP4 Linear | 50 | 71.2530 | 0.712530 | -0.015881 |
 
 Here **MXFP4 refers to online quantization of model linear-layer weights
 and activations for linear GEMM** (`--quantization mxfp4`), not MXFP4

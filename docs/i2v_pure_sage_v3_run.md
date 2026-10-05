@@ -123,3 +123,35 @@ standalone recipe `mxfp4_sage_v3_pure` (same pattern as `mxfp4_sage_no_fallback`
   `deepklox.sageattn_v3`) recorded in the final report.
 - Keep ALL black partials (`*.failed_*.mp4`, `*.partial.mp4`) — do not delete; they
   are the repro ground truth for the port defect hunt.
+- Retry pass 2 (00:52 CST): **004 black AGAIN (2/2 — deterministic on its prompt);
+  033 PASSED (1/2 — intermittent); 041 (device 1) newly black (1/1)** — its exception
+  masked dev0's collection order so no traceback appeared in the driver log.
+  Pass 3 (01:08 CST, `--retry-failed`) completes the 11 untouched tail items; 004/041
+  are expected to re-fail and are reported as kernel-path numerics findings, not
+  campaign blockers.
+
+## Repro analysis — instrumented 004 (sage-probe/pure_repro, 01:0x CST)
+
+Single prompt 004, device 0, backend finite guard **on** + sitecustomize wrapper
+around `deepklox.sageattn_v3` logging per-call max|q/k/v/out| + NaN/Inf counts.
+Video black again (3rd consecutive for 004). First divergent call:
+
+- n=85 → **step 2, block 14**: q, k and v ALL carry exactly `81920` NaN elements
+  (= 16 token-positions × 40 heads × 128 dim) — i.e. the NaN already exists in the
+  residual stream entering block 14; the pure kernel returned faithful NaN and the
+  guard then replaced all 95 subsequent calls (`nonfinite_sdpa=95`, expected value
+  with the guard enabled — the guard being OFF by default is why campaign videos go
+  silently black instead of falling back).
+- Every earlier attention call is clean: step 2 max|out| = 9.9, whole-run max
+  |out| = 32 (step 1 block 39). So the kernel's output magnitudes were never
+  extreme; the NaN is born in block 13's **out-proj / FFN** (model-side mxfp4-linear
+  + bf16 ops) on ~16 tokens, triggered by pure-vs-hybrid attention numerics on this
+  adversarial high-energy prompt (and the 033/041 intermittency matches
+  uninitialized-memory / async sensitivity of the quantized path rather than an
+  attention-kernel math error).
+- Actionable: (a) run accuracy arms with `SAGE_ATTN_DEBUG_CHECK_FINITE=1` so collapse
+  becomes an auditable counter instead of a silent black video; (b) if the pure arm
+  must survive these prompts, the fix lives in the mxfp4-linear/GELU overflow path
+  (or clamping attention output before out-proj), not in the v3_pure FMHA math;
+  (c) 004 prompt + seed 0 + this checkpoint is a minimal 5-minute reproducer via
+  `python3 /home/yiliu7/sage-probe/pure_repro/repro004.py 4 0`.
